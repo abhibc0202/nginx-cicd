@@ -43,17 +43,23 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh '''
-                    kubectl apply -f app1-deployment.yaml
-                    kubectl apply -f app1-service.yaml
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKERHUB_USER',
+                    passwordVariable: 'DOCKERHUB_TOKEN'
+                )]) {
+                    sh '''
+                        kubectl apply -f app1-deployment.yaml
+                        kubectl apply -f app1-service.yaml
 
-                    kubectl apply -f app2-deployment.yaml
-                    kubectl apply -f app2-service.yaml
+                        kubectl apply -f app2-deployment.yaml
+                        kubectl apply -f app2-service.yaml
 
-                    kubectl apply -f ingress.yaml
+                        kubectl apply -f ingress.yaml
 
-                    kubectl set image deployment/app1 nginx=$DOCKERHUB_USER/$IMAGE_NAME:build-${BUILD_NUMBER}
-                '''
+                        kubectl set image deployment/app1 nginx=$DOCKERHUB_USER/$IMAGE_NAME:build-${BUILD_NUMBER}
+                    '''
+                }
             }
         }
 
@@ -67,5 +73,3 @@ pipeline {
         }
     }
 }
-
-            
