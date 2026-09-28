@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -45,9 +46,9 @@ pipeline {
                     passwordVariable: 'DOCKERHUB_TOKEN'
                 )]) {
                     sh '''
-                        kubectl apply -f deployment.yaml
-                        kubectl apply -f service.yaml
-                        kubectl set image deployment/nginx-app nginx=$DOCKERHUB_USER/$IMAGE_NAME:build-${BUILD_NUMBER}
+                        kubectl apply -f app1-deployment.yaml
+                        kubectl apply -f app1-service.yaml
+                        kubectl set image deployment/app1 nginx=$DOCKERHUB_USER/$IMAGE_NAME:build-${BUILD_NUMBER}
                     '''
                 }
             }
@@ -55,8 +56,9 @@ pipeline {
 
         stage('Rolling Update') {
             steps {
-                sh 'kubectl rollout status deployment/nginx-app --timeout=120s'
+                sh 'kubectl rollout status deployment/app1 --timeout=120s'
             }
         }
     }
 }
+            
