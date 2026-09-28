@@ -30,8 +30,11 @@ pipeline {
                 )]) {
                     sh '''
                         echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USER" --password-stdin
+
                         docker tag ${IMAGE_NAME}:build-${BUILD_NUMBER} $DOCKERHUB_USER/${IMAGE_NAME}:build-${BUILD_NUMBER}
+
                         docker push $DOCKERHUB_USER/${IMAGE_NAME}:build-${BUILD_NUMBER}
+
                         docker logout
                     '''
                 }
@@ -40,25 +43,29 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
-                    usernameVariable: 'DOCKERHUB_USER',
-                    passwordVariable: 'DOCKERHUB_TOKEN'
-                )]) {
-                    sh '''
-                        kubectl apply -f app1-deployment.yaml
-                        kubectl apply -f app1-service.yaml
-                        kubectl set image deployment/app1 nginx=$DOCKERHUB_USER/$IMAGE_NAME:build-${BUILD_NUMBER}
-                    '''
-                }
+                sh '''
+                    kubectl apply -f app1-deployment.yaml
+                    kubectl apply -f app1-service.yaml
+
+                    kubectl apply -f app2-deployment.yaml
+                    kubectl apply -f app2-service.yaml
+
+                    kubectl apply -f ingress.yaml
+
+                    kubectl set image deployment/app1 nginx=$DOCKERHUB_USER/$IMAGE_NAME:build-${BUILD_NUMBER}
+                '''
             }
         }
 
         stage('Rolling Update') {
             steps {
-                sh 'kubectl rollout status deployment/app1 --timeout=120s'
+                sh '''
+                    kubectl rollout status deployment/app1 --timeout=120s
+                    kubectl rollout status deployment/app2 --timeout=120s
+                '''
             }
         }
     }
 }
+
             
