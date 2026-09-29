@@ -25,13 +25,25 @@ pipeline {
 
                     def files = changedFiles ? changedFiles.readLines() : []
 
-                    env.BUILD_APP1 = files.any {
-                        it.startsWith('app1/')
-                    } ? 'true' : 'false'
+                    def app1Image = sh(
+                        script: "kubectl get deployment app1 -o jsonpath='{.spec.template.spec.containers[?(@.name==\"nginx\")].image}' 2>/dev/null || true",
+                        returnStdout: true
+                    ).trim()
 
-                    env.BUILD_APP2 = files.any {
-                        it.startsWith('app2/')
-                    } ? 'true' : 'false'
+                    def app2Image = sh(
+                        script: "kubectl get deployment app2 -o jsonpath='{.spec.template.spec.containers[?(@.name==\"nginx\")].image}' 2>/dev/null || true",
+                        returnStdout: true
+                    ).trim()
+
+                    env.BUILD_APP1 = (
+                        files.any { it.startsWith('app1/') } ||
+                        app1Image != 'a6h15hek/nginx-cicd-app1:latest'
+                    ) ? 'true' : 'false'
+
+                    env.BUILD_APP2 = (
+                        files.any { it.startsWith('app2/') } ||
+                        app2Image != 'a6h15hek/nginx-cicd-app2:latest'
+                    ) ? 'true' : 'false'
 
                     env.DEPLOY_APP1 = (
                         env.BUILD_APP1 == 'true' ||
@@ -66,22 +78,18 @@ pipeline {
 
                         if [ "$BUILD_APP1" = "true" ]; then
                             docker build \
-                                -t $DOCKERHUB_USER/$IMAGE_APP1:build-${BUILD_NUMBER} \
-                                -t $DOCKERHUB_USER/$IMAGE_APP1:latest \
+                                -t "$DOCKERHUB_USER/$IMAGE_APP1:latest" \
                                 ./app1
 
-                            docker push $DOCKERHUB_USER/$IMAGE_APP1:build-${BUILD_NUMBER}
-                            docker push $DOCKERHUB_USER/$IMAGE_APP1:latest
+                            docker push "$DOCKERHUB_USER/$IMAGE_APP1:latest"
                         fi
 
                         if [ "$BUILD_APP2" = "true" ]; then
                             docker build \
-                                -t $DOCKERHUB_USER/$IMAGE_APP2:build-${BUILD_NUMBER} \
-                                -t $DOCKERHUB_USER/$IMAGE_APP2:latest \
+                                -t "$DOCKERHUB_USER/$IMAGE_APP2:latest" \
                                 ./app2
 
-                            docker push $DOCKERHUB_USER/$IMAGE_APP2:build-${BUILD_NUMBER}
-                            docker push $DOCKERHUB_USER/$IMAGE_APP2:latest
+                            docker push "$DOCKERHUB_USER/$IMAGE_APP2:latest"
                         fi
 
                         docker logout || true
@@ -92,45 +100,23 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
-                    usernameVariable: 'DOCKERHUB_USER',
-                    passwordVariable: 'DOCKERHUB_TOKEN'
-                )]) {
-                    sh '''
-                        set -e
+                sh '''
+                    set -e
 
-                        kubectl apply -f app1-service.yaml
-                        kubectl apply -f app2-service.yaml
-                        kubectl apply -f ingress.yaml
+                    kubectl apply -f app1-service.yaml
+                    kubectl apply -f app2-service.yaml
+                    kubectl apply -f ingress.yaml
 
-                        if [ "$DEPLOY_APP1" = "true" ]; then
+                    if [ "$DEPLOY_APP1" = "true" ]; then
+                        kubectl apply -f app1-deployment.yaml
+                        kubectl rollout restart deployment/app1
+                    fi
 
-                            if [ "$BUILD_APP1" = "true" ]; then
-                                APP1_IMAGE="$DOCKERHUB_USER/$IMAGE_APP1:build-${BUILD_NUMBER}"
-                            else
-                                APP1_IMAGE=$(kubectl get deployment app1 \
-                                    -o jsonpath='{.spec.template.spec.containers[?(@.name=="nginx")].image}')
-                            fi
-
-                            sed "s|image: nginx:alpine|image: $APP1_IMAGE|g" \
-                                app1-deployment.yaml | kubectl apply -f -
-                        fi
-
-                        if [ "$DEPLOY_APP2" = "true" ]; then
-
-                            if [ "$BUILD_APP2" = "true" ]; then
-                                APP2_IMAGE="$DOCKERHUB_USER/$IMAGE_APP2:build-${BUILD_NUMBER}"
-                            else
-                                APP2_IMAGE=$(kubectl get deployment app2 \
-                                    -o jsonpath='{.spec.template.spec.containers[?(@.name=="nginx")].image}')
-                            fi
-
-                            sed "s|image: nginx:alpine|image: $APP2_IMAGE|g" \
-                                app2-deployment.yaml | kubectl apply -f -
-                        fi
-                    '''
-                }
+                    if [ "$DEPLOY_APP2" = "true" ]; then
+                        kubectl apply -f app2-deployment.yaml
+                        kubectl rollout restart deployment/app2
+                    fi
+                '''
             }
         }
 

@@ -20,7 +20,8 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: nginx:alpine
+        image: a6h15hek/nginx-cicd-app1:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
         readinessProbe:
